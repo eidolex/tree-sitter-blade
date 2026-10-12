@@ -631,8 +631,8 @@ Laravel 12 Welcome.blade.php
               (text)
               (element
                 (start_tag
-                  (tag_name))
-                (text))
+                  (tag_name)))
+              (text)
               (end_tag
                 (tag_name)))
             (element

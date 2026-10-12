@@ -1,0 +1,173 @@
+================================================================================
+unknown inline directive with arguments
+================================================================================
+
+@money($price)
+<p>@datetime($post->created_at)</p>
+@disk('local')
+    test
+@enddisk
+
+--------------------------------------------------------------------------------
+
+(document
+  (directive)
+  (parameter)
+  (element
+    (start_tag
+      (tag_name))
+    (directive)
+    (parameter)
+    (end_tag
+      (tag_name)))
+  (conditional
+    (directive_start)
+    (parameter)
+    (text)
+    (directive_end)))
+
+================================================================================
+unknown inline directive does not swallow later siblings
+================================================================================
+
+@money($a)
+<div>one</div>
+@money($b)
+<div>two</div>
+
+--------------------------------------------------------------------------------
+
+(document
+  (directive)
+  (parameter)
+  (element
+    (start_tag
+      (tag_name))
+    (text)
+    (end_tag
+      (tag_name)))
+  (directive)
+  (parameter)
+  (element
+    (start_tag
+      (tag_name))
+    (text)
+    (end_tag
+      (tag_name))))
+
+================================================================================
+void elements inside directive blocks
+================================================================================
+
+@push('head')
+    <link rel="preconnect" href="https://example.com">
+@endpush
+
+@if($x)
+    a<br>b
+@endif
+
+--------------------------------------------------------------------------------
+
+(document
+  (stack
+    (directive_start)
+    (parameter)
+    (element
+      (start_tag
+        (tag_name)
+        (attribute
+          (attribute_name)
+          (quoted_attribute_value
+            (attribute_value)))
+        (attribute
+          (attribute_name)
+          (quoted_attribute_value
+            (attribute_value)))))
+    (directive_end))
+  (conditional
+    (directive_start)
+    (parameter)
+    (text)
+    (element
+      (start_tag
+        (tag_name)))
+    (text)
+    (directive_end)))
+
+================================================================================
+@ inside a quoted attribute value is text
+================================================================================
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700" rel="stylesheet">
+<a href='mailto:me@example.com'>mail</a>
+
+--------------------------------------------------------------------------------
+
+(document
+  (element
+    (start_tag
+      (tag_name)
+      (attribute
+        (attribute_name)
+        (quoted_attribute_value
+          (attribute_value)))
+      (attribute
+        (attribute_name)
+        (quoted_attribute_value
+          (attribute_value)))))
+  (element
+    (start_tag
+      (tag_name)
+      (attribute
+        (attribute_name)
+        (quoted_attribute_value
+          (attribute_value))))
+    (text)
+    (end_tag
+      (tag_name))))
+
+================================================================================
+directive after whitespace in a quoted attribute value
+================================================================================
+
+<input class="form @error('email') is-invalid @enderror">
+
+--------------------------------------------------------------------------------
+
+(document
+  (element
+    (start_tag
+      (tag_name)
+      (attribute
+        (attribute_name)
+        (quoted_attribute_value
+          (attribute_value)
+          (conditional
+            (directive_start)
+            (parameter)
+            (text)
+            (directive_end)))))))
+
+================================================================================
+directive at the start of a quoted attribute value
+================================================================================
+
+<div class="@if($a) open @endif"></div>
+
+--------------------------------------------------------------------------------
+
+(document
+  (element
+    (start_tag
+      (tag_name)
+      (attribute
+        (attribute_name)
+        (quoted_attribute_value
+          (conditional
+            (directive_start)
+            (parameter)
+            (text)
+            (directive_end)))))
+    (end_tag
+      (tag_name))))

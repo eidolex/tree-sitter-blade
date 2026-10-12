@@ -18,7 +18,33 @@ enum TokenType {
     IMPLICIT_END_TAG,
     RAW_TEXT,
     COMMENT,
+    CUSTOM_INLINE_LOOKAHEAD,
 };
+
+// Every directive name main/grammar.ts gives its own rule (string literals
+// and regex alternatives, without the `end` forms). The custom-inline
+// lookahead must leave these to the grammar. main/tests/scanner_test.ts checks
+// that this list covers grammar.ts.
+static const char *const GRAMMAR_DIRECTIVES[] = {
+    // BEGIN GRAMMAR DIRECTIVES
+    "after", "asset", "assets", "auth", "aware", "before", "break", "can", "canany", "cannot", "case",
+    "checked", "class", "content", "continue", "csrf", "default", "disabled", "discord", "each", "empty",
+    "env", "error", "excerpt", "extends", "extract", "feature", "field", "finished", "for", "foreach",
+    "forelse", "fragment", "guest", "hasSection", "if", "import", "include", "includeFirst", "includeIf",
+    "includeUnless", "includeWhen", "inertia", "inertiaHead", "inject", "isset", "js", "json", "livewire",
+    "livewireScriptConfig", "livewireScripts", "livewireStyles", "method", "microsoftTeams", "once",
+    "options", "parent", "permalink", "persist", "php", "prepend", "prependOnce", "production", "props",
+    "push", "pushIf", "pushOnce", "readonly", "required", "routes", "script", "section", "sectionMissing",
+    "selected", "servers", "set", "setup", "show", "slack", "stack", "story", "style", "success", "svg",
+    "switch", "task", "telegram", "teleport", "thumbnail", "title", "use", "verbatim", "vite",
+    "viteReactRefresh", "volt", "while", "wireUiScripts", "yield",
+    // END GRAMMAR DIRECTIVES
+};
+
+// Name prefixes the grammar matches by regex: @end..., @else..., @unless...
+static const char *const GRAMMAR_DIRECTIVE_PREFIXES[] = {"end", "else", "unless"};
+
+#define DIRECTIVE_NAME_MAX 64
 
 typedef struct {
     Array(Tag) tags;
@@ -291,6 +317,75 @@ static bool scan_self_closing_tag_delimiter(Scanner *scanner, TSLexer *lexer) {
     return false;
 }
 
+static bool is_grammar_directive(const char *name) {
+    for (unsigned i = 0; i < sizeof(GRAMMAR_DIRECTIVE_PREFIXES) / sizeof(GRAMMAR_DIRECTIVE_PREFIXES[0]); i++) {
+        const char *prefix = GRAMMAR_DIRECTIVE_PREFIXES[i];
+        if (strncmp(name, prefix, strlen(prefix)) == 0) {
+            return true;
+        }
+    }
+    for (unsigned i = 0; i < sizeof(GRAMMAR_DIRECTIVES) / sizeof(GRAMMAR_DIRECTIVES[0]); i++) {
+        if (strcmp(name, GRAMMAR_DIRECTIVES[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool is_name_char(int32_t c) { return iswalnum(c); }
+
+// At `@`: succeeds, zero-width, when this is an unknown `@name(` with no
+// `@end<name>` anywhere after it, so the grammar reads it as an inline
+// directive instead of the start of a custom block that never closes. The
+// end name is compared case-insensitively (`@datetime` / `@endDatetime`).
+static bool scan_custom_inline_lookahead(TSLexer *lexer) {
+    lexer->mark_end(lexer);
+    advance(lexer);
+
+    char name[DIRECTIVE_NAME_MAX];
+    unsigned length = 0;
+    while (is_name_char(lexer->lookahead)) {
+        if (length + 1 >= DIRECTIVE_NAME_MAX) {
+            return false;
+        }
+        name[length++] = (char)lexer->lookahead;
+        advance(lexer);
+    }
+    name[length] = '\0';
+
+    if (length == 0 || lexer->lookahead != '(' || is_grammar_directive(name)) {
+        return false;
+    }
+
+    while (!lexer->eof(lexer)) {
+        if (lexer->lookahead != '@') {
+            advance(lexer);
+            continue;
+        }
+        advance(lexer);
+        const char *end = "end";
+        unsigned matched = 0;
+        while (matched < 3 && lexer->lookahead == end[matched]) {
+            advance(lexer);
+            matched++;
+        }
+        if (matched < 3) {
+            continue;
+        }
+        matched = 0;
+        while (matched < length && towlower(lexer->lookahead) == towlower(name[matched])) {
+            advance(lexer);
+            matched++;
+        }
+        if (matched == length && !is_name_char(lexer->lookahead)) {
+            return false;
+        }
+    }
+
+    lexer->result_symbol = CUSTOM_INLINE_LOOKAHEAD;
+    return true;
+}
+
 static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
     if (valid_symbols[RAW_TEXT] && !valid_symbols[START_TAG_NAME] && !valid_symbols[END_TAG_NAME]) {
         return scan_raw_text(scanner, lexer);
@@ -298,6 +393,21 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
 
     while (iswspace(lexer->lookahead)) {
         skip(lexer);
+    }
+
+    // A void element (<br>, <link>) has no content, so it ends before
+    // whatever follows it, not only before the next `<`. Without this, text
+    // and directives such as `@endpush` after `<link ...>` became its
+    // children and the enclosing directive block lost its end (#137).
+    if (valid_symbols[IMPLICIT_END_TAG] && lexer->lookahead != '<' && scanner->tags.size > 0 &&
+        tag_is_void(array_back(&scanner->tags))) {
+        pop_tag(scanner);
+        lexer->result_symbol = IMPLICIT_END_TAG;
+        return true;
+    }
+
+    if (lexer->lookahead == '@' && valid_symbols[CUSTOM_INLINE_LOOKAHEAD]) {
+        return scan_custom_inline_lookahead(lexer);
     }
 
     switch (lexer->lookahead) {

@@ -1522,6 +1522,48 @@
       ]
     },
     "_inline_directive": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_known_inline_directive"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_custom_inline"
+        }
+      ]
+    },
+    "_custom_inline": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_custom_inline_lookahead"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": -1,
+              "content": {
+                "type": "PATTERN",
+                "value": "@[a-zA-Z\\d]+"
+              }
+            }
+          },
+          "named": true,
+          "value": "directive"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_directive_parameter"
+        }
+      ]
+    },
+    "_known_inline_directive": {
       "type": "SEQ",
       "members": [
         {
@@ -4929,6 +4971,17 @@
                   "value": "[^'{}]"
                 }
               }
+            },
+            {
+              "type": "TOKEN",
+              "content": {
+                "type": "PREC",
+                "value": -1,
+                "content": {
+                  "type": "PATTERN",
+                  "value": "[^'{}\\s@]+@[^'{}\\s]*"
+                }
+              }
             }
           ]
         }
@@ -4965,6 +5018,17 @@
                 "content": {
                   "type": "PATTERN",
                   "value": "[^\"{}]"
+                }
+              }
+            },
+            {
+              "type": "TOKEN",
+              "content": {
+                "type": "PREC",
+                "value": -1,
+                "content": {
+                  "type": "PATTERN",
+                  "value": "[^\"{}\\s@]+@[^\"{}\\s]*"
                 }
               }
             }
@@ -5021,6 +5085,10 @@
     {
       "type": "SYMBOL",
       "name": "comment"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_custom_inline_lookahead"
     }
   ],
   "inline": [],

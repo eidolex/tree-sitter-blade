@@ -32,6 +32,10 @@ const nodes = new NodeMap(CONDITIONAL_SPECS);
 export default grammar(html, {
   name: "blade",
 
+  // Appended to tree-sitter-html's externals; the order must match the
+  // TokenType enum in src/scanner.c.
+  externals: ($, original) => [...original, $._custom_inline_lookahead],
+
   rules: {
     // The entire grammar
     _node: ($) =>
@@ -226,7 +230,21 @@ export default grammar(html, {
       ),
 
     // !inline directives
-    _inline_directive: ($) =>
+    _inline_directive: ($) => choice($._known_inline_directive, $._custom_inline),
+
+    // Unknown `@name(...)` with no matching `@end<name>` later in the file,
+    // e.g. a Blade::directive() such as `@money($x)`. The external scanner
+    // looks ahead for the end directive and emits the zero-width
+    // _custom_inline_lookahead only when there is none; otherwise the name
+    // opens a $._custom block as before.
+    _custom_inline: ($) =>
+      seq(
+        $._custom_inline_lookahead,
+        alias(token(prec(-1, /@[a-zA-Z\d]+/)), $.directive),
+        $._directive_parameter,
+      ),
+
+    _known_inline_directive: ($) =>
       seq(
         alias(
           choice(
@@ -862,6 +880,10 @@ export default grammar(html, {
         ),
       ),
 
+    // An `@` glued to the text before it (`wght@400`, `me@example.com`) is
+    // text: inside a quoted value a directive must start the value or follow
+    // whitespace. The second token below wins by length over the one-char
+    // token, so the `@` never reaches the directive tokens.
     _singly_quoted_attribute_text: ($) =>
       prec.right(
         repeat1(
@@ -869,6 +891,7 @@ export default grammar(html, {
             $._escaped_directive,
             token(prec(-2, /[{}]/)),
             token(prec(-1, /[^'{}]/)),
+            token(prec(-1, /[^'{}\s@]+@[^'{}\s]*/)),
           ),
         ),
       ),
@@ -879,6 +902,7 @@ export default grammar(html, {
             $._escaped_directive,
             token(prec(-2, /[{}]/)),
             token(prec(-1, /[^"{}]/)),
+            token(prec(-1, /[^"{}\s@]+@[^"{}\s]*/)),
           ),
         ),
       ),
